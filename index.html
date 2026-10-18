@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mandible Digital Twin — CT STL/OBJ Loader & CSV FEA Exporter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --panel: rgba(17, 24, 39, 0.95);
+            --border: #1f2937;
+            --accent: #38bdf8;
+            --danger: #ef4444;
+            --warn: #f59e0b;
+            --ok: #10b981;
+            --text: #f3f4f6;
+            --muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        #sidebar-left,
+        #sidebar-right {
+            width: 360px;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            padding: 14px;
+            overflow-y: auto;
+            z-index: 10;
+        }
+
+        #sidebar-right {
+            border-right: none;
+            border-left: 1px solid var(--border);
+            width: 350px;
+        }
+
+        #viewport {
+            flex: 1;
+            position: relative;
+            height: 100vh;
+        }
+
+        h1 {
+            font-size: 0.98rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 3px;
+            letter-spacing: 0.4px;
+        }
+
+        h2 {
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--muted);
+            margin: 12px 0 6px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 4px;
+        }
+
+        .sub {
+            font-size: 0.71rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.73rem;
+            margin-bottom: 3px;
+            color: #d1d5db;
+        }
+
+        select,
+        input[type="range"],
+        button {
+            width: 100%;
+        }
+
+        select {
+            background: #1f2937;
+            color: #fff;
+            border: 1px solid #374151;
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            margin-bottom: 7px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .zone-card {
+            background: rgba(31, 41, 55, 0.65);
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 6px 8px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .zone-card.active {
+            border-color: var(--accent);
+            background: rgba(56, 189, 248, 0.12);
+        }
+
+        .zone-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.73rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .zone-meta {
+            font-size: 0.66rem;
+            color: var(--muted);
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 7px;
+            margin-bottom: 8px;
+        }
+
+        .kpi {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 7px 9px;
+        }
+
+        .kpi-label {
+            font-size: 0.66rem;
+            color: var(--muted);
+        }
+
+        .kpi-val {
+            font-size: 1.0rem;
+            font-weight: 700;
+            margin-top: 2px;
+            color: var(--accent);
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        button,
+        .file-label {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-size: 0.74rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            display: inline-block;
+            width: 100%;
+        }
+
+        button:hover,
+        .file-label:hover {
+            background: #1d4ed8;
+        }
+
+        button.success {
+            background: #059669;
+        }
+
+        button.success:hover {
+            background: #047857;
+        }
+
+        button.secondary {
+            background: #374151;
+        }
+
+        button.secondary:hover {
+            background: #4b5563;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .mesh-info {
+            font-size: 0.69rem;
+            color: #93c5fd;
+            background: rgba(30, 58, 138, 0.35);
+            border: 1px solid #1e3a8a;
+            border-radius: 5px;
+            padding: 5px 8px;
+            margin-top: 6px;
+        }
+
+        #legend {
+            position: absolute;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--panel);
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.72rem;
+            pointer-events: none;
+        }
+
+        .colorbar {
+            width: 180px;
+            height: 12px;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #0033ff 0%, #00ffff 25%, #00ff44 50%, #ffee00 75%, #ff0000 100%);
+        }
+
+        #banner {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid #334155;
+            padding: 7px 14px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            color: #e2e8f0;
+            pointer-events: none;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        #drop-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(14, 165, 233, 0.2);
+            border: 3px dashed var(--accent);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
+            z-index: 50;
+        }
+
+        #csv-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .modal-box {
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            width: 680px;
+            max-width: 92vw;
+            padding: 16px;
+        }
+
+        textarea#csvPreview {
+            width: 100%;
+            height: 280px;
+            background: #030712;
+            color: #10b981;
+            border: 1px solid #1f2937;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.72rem;
+            margin: 10px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.71rem;
+            font-weight: 700;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- LEFT PANEL -->
+    <div id="sidebar-left">
+        <h1>MANDIBLE DIGITAL TWIN v2.1</h1>
+        <div class="sub">CT Mesh (.STL/.OBJ) FEA Solver & CSV Exporter</div>
+
+        <h2>1. Patient 3D Geometry (CT / CAD)</h2>
+        <div class="btn-row">
+            <label class="file-label" for="meshInput">Upload .STL / .OBJ</label>
+            <input type="file" id="meshInput" accept=".stl,.obj" />
+            <button id="btnSampleSTL" class="success">Test Sample CT .STL</button>
+        </div>
+        <div class="btn-row">
+            <button id="btnFlipAxes" class="secondary">Rotate CT 90° X</button>
+            <button id="btnResetMesh" class="secondary">Reset Default</button>
+        </div>
+        <div class="mesh-info" id="meshMeta">Initializing mesh...</div>
+
+        <h2>2. Reconstructive Biomaterial</h2>
+        <select id="matSelect"></select>
+
+        <h2>3. Patient Case & Pathology</h2>
+        <div class="grid-2">
+            <div>
+                <label for="ageSelect">Age Group</label>
+                <select id="ageSelect">
+                    <option value="0.72">Pediatric (8-14y)</option>
+                    <option value="1.00" selected>Young Adult (18-35y)</option>
+                    <option value="0.92">Middle-Aged (36-60y)</option>
+                    <option value="0.68">Geriatric (&gt;65y)</option>
+                </select>
+            </div>
+            <div>
+                <label for="sexSelect">Biological Sex</label>
+                <select id="sexSelect">
+                    <option value="1.08" selected>Male (1.08x Section)</option>
+                    <option value="0.94">Female (0.94x Section)</option>
+                </select>
+            </div>
+        </div>
+
+        <label for="condSelect">Clinical Condition / Pathology</label>
+        <select id="condSelect">
+            <option value="healthy">Healthy Intact Mandible</option>
+            <option value="tumor">Ameloblastoma Tumor Resection (Left Body Defect)</option>
+            <option value="osteo">Osteoporosis / Cortical Thinning</option>
+            <option value="accident">Accident Trauma (Click Jaw to Induce Crack)</option>
+        </select>
+
+        <div class="btn-row">
+            <button id="btnChew">Pause Chewing Sim</button>
+            <button id="btnClearCrack" class="secondary">Heal Cracks</button>
+        </div>
+
+        <h2>4. Loading Mode & 8 Anatomical Zones</h2>
+        <select id="loadMode">
+            <option value="force">Point Force Mode (N at Zone Centroid)</option>
+            <option value="pressure">Pressure Mode (MPa × Auto Mesh Area mm²)</option>
+        </select>
+
+        <div id="zonesContainer"></div>
+    </div>
+
+    <!-- CENTER 3D VIEWPORT -->
+    <div id="viewport">
+        <div id="drop-overlay">Drop Patient .STL or .OBJ Mandible Mesh Here</div>
+        <div id="banner">Click zone to inspect • Shift+Click jaw to relocate zone • "Accident Trauma" + Click to
+            fracture</div>
+        <div id="legend">
+            <span>0 MPa</span>
+            <div class="colorbar"></div>
+            <span id="legendMax">130 MPa</span>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="sidebar-right">
+        <h2>Real-Time FEA Telemetry</h2>
+        <div class="kpi-grid">
+            <div class="kpi">
+                <div class="kpi-label">Peak Von Mises (σ_vm)</div>
+                <div class="kpi-val" id="kpiSigma">0.0 MPa</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Factor of Safety (FoS)</div>
+                <div class="kpi-val" id="kpiFoS">0.00</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Peak Microstrain (ε)</div>
+                <div class="kpi-val" id="kpiStrain">0 με</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Max Deflection (δ_max)</div>
+                <div class="kpi-val" id="kpiDisp">0.000 mm</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Total Resultant Load</div>
+                <div class="kpi-val" id="kpiForce">0 N</div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Active Fracture Cracks</div>
+                <div class="kpi-val" id="kpiCracks">0</div>
+            </div>
+        </div>
+
+        <button id="btnExportCSV" class="success" style="margin-bottom:10px;">
+            ⬇ Export 8-Zone CSV Report
+        </button>
+
+        <div class="kpi" style="margin-bottom:10px;">
+            <div class="kpi-label">Structural & Clinical Verdict</div>
+            <div id="kpiStatus" style="margin-top:4px; font-size:0.78rem; font-weight:600;">Evaluating...</div>
+        </div>
+
+        <h2>Selected Material Properties</h2>
+        <div class="kpi" style="font-size:0.73rem; line-height:1.55;" id="matDetails"></div>
+
+        <h2>Zone Stress Breakdown (Peak / Mean)</h2>
+        <div id="zoneTelemetry" style="font-size:0.72rem; line-height:1.5;"></div>
+    </div>
+
+    <!-- CSV MODAL FALLBACK -->
+    <div id="csv-modal">
+        <div class="modal-box">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 style="font-size:0.9rem;color:#38bdf8;">8-Zone Mandible FEA Report (.CSV)</h3>
+                <button id="btnCloseModal" class="secondary" style="width:auto;padding:4px 10px;">Close</button>
+            </div>
+            <textarea id="csvPreview" readonly></textarea>
+            <div class="btn-row">
+                <button id="btnCopyCSV" class="success">Copy CSV to Clipboard</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. DATA & STATE INITIALIZATION (DECLARED FIRST TO PREVENT TDZ ERRORS)
+        // =========================================================================
+        const MATERIALS = [
+            { id: 'bone', name: 'Native Cortical Bone (Baseline)', E: 14.8, nu: 0.30, Sy: 130, rho: 1.85, note: 'Physiological benchmark; zero stress shielding.' },
+            { id: 'pcl', name: 'Bio-PCL (Pure Polycaprolactone)', E: 0.4, nu: 0.38, Sy: 16, rho: 1.15, note: 'Bioresorbable polymer; high strain under load, requires Ti fixation.' },
+            { id: 'pcl_ha', name: 'Bio-PCL + 30% HA Ceramic Composite', E: 2.4, nu: 0.33, Sy: 42, rho: 1.48, note: 'Osteoconductive 3D-printed scaffold; suitable for low-load defects.' },
+            { id: 'peek', name: 'PEEK (Unfilled Biomedical)', E: 3.8, nu: 0.38, Sy: 100, rho: 1.32, note: 'Radiolucent, shock-absorbing; slightly higher strain than native bone.' },
+            { id: 'pekk', name: 'PEKK (Polyetherketoneketone)', E: 4.5, nu: 0.36, Sy: 115, rho: 1.31, note: 'Superior compressive strength and antibacterial surface vs PEEK.' },
+            { id: 'cfr_peek', name: 'CFR-PEEK (30% Carbon-Fiber PEEK)', E: 18.0, nu: 0.30, Sy: 225, rho: 1.41, note: 'Near-ideal modulus match to cortical bone (18 vs 14.8 GPa).' },
+            { id: 'ti64', name: 'Ti-6Al-4V ELI (Solid Titanium)', E: 110.0, nu: 0.34, Sy: 880, rho: 4.43, note: 'High safety factor, but causes ~75% stress shielding on host bone.' },
+            { id: 'porous_ti', name: 'Porous Ti-6Al-4V (70% Gyroid Lattice)', E: 15.2, nu: 0.32, Sy: 240, rho: 1.35, note: 'SLM 3D-printed lattice tuned to match cortical bone stiffness.' },
+            { id: 'mg_we43', name: 'Mg-WE43 Biodegradable Alloy', E: 44.0, nu: 0.29, Sy: 195, rho: 1.80, note: 'Bioresorbable metal; gradually transfers load to regenerating bone.' },
+            { id: 'zirconia', name: 'Zirconia Ceramic (3Y-TZP)', E: 210.0, nu: 0.31, Sy: 950, rho: 6.05, note: 'Extreme stiffness; prone to brittle fracture under impact.' }
+        ];
+
+        const DEFAULT_ZONE_POS = [
+            [-4.1, -0.7, -1.6], [4.1, -0.7, -1.6],
+            [-4.4, 2.7, -3.1], [4.4, 2.7, -3.1],
+            [-4.1, 2.3, -1.0], [4.1, 2.3, -1.0],
+            [0.0, -0.2, 1.5], [0.0, -1.1, 3.6]
+        ];
+        const DEFAULT_AREAS = [450, 450, 280, 280, 185, 185, 260, 320];
+
+        const ZONES = [
+            { id: 0, name: 'Z1: Left Masseter (Angle)', area: 450, force: 260, pressure: 0.58, pos: [...DEFAULT_ZONE_POS[0]], dir: [0.2, 0.88, 0.42], peakStress: 0, meanStress: 0 },
+            { id: 1, name: 'Z2: Right Masseter (Angle)', area: 450, force: 260, pressure: 0.58, pos: [...DEFAULT_ZONE_POS[1]], dir: [-0.2, 0.88, 0.42], peakStress: 0, meanStress: 0 },
+            { id: 2, name: 'Z3: Left Pterygoid & Condyle', area: 280, force: 180, pressure: 0.64, pos: [...DEFAULT_ZONE_POS[2]], dir: [-0.38, 0.78, 0.50], peakStress: 0, meanStress: 0 },
+            { id: 3, name: 'Z4: Right Pterygoid & Condyle', area: 280, force: 180, pressure: 0.64, pos: [...DEFAULT_ZONE_POS[3]], dir: [0.38, 0.78, 0.50], peakStress: 0, meanStress: 0 },
+            { id: 4, name: 'Z5: Left Temporalis (Coronoid)', area: 185, force: 150, pressure: 0.81, pos: [...DEFAULT_ZONE_POS[4]], dir: [0.15, 0.85, -0.50], peakStress: 0, meanStress: 0 },
+            { id: 5, name: 'Z6: Right Temporalis (Coronoid)', area: 185, force: 150, pressure: 0.81, pos: [...DEFAULT_ZONE_POS[5]], dir: [-0.15, 0.85, -0.50], peakStress: 0, meanStress: 0 },
+            { id: 6, name: 'Z7: Molar Alveolar Bite Arch', area: 260, force: 340, pressure: 1.31, pos: [...DEFAULT_ZONE_POS[6]], dir: [0.0, -1.0, 0.0], peakStress: 0, meanStress: 0 },
+            { id: 7, name: 'Z8: Chin Symphysis (Menton)', area: 320, force: 140, pressure: 0.44, pos: [...DEFAULT_ZONE_POS[7]], dir: [0.0, -0.6, -0.8], peakStress: 0, meanStress: 0 }
+        ];
+
+        const state = {
+            meshName: 'Parametric_Baseline_Mandible',
+            vertexCount: 0,
+            mmPerSceneUnit: 12.5,
+            material: MATERIALS[0],
+            ageFactor: 1.0,
+            sexFactor: 1.08,
+            condition: 'healthy',
+            loadMode: 'force',
+            chewing: true,
+            selectedZone: 7,
+            cracks: [],
+            telemetry: { peakSigma: 0, fos: 0, microstrain: 0, maxDisp: 0, totalForce: 0, verdict: 'Optimal' }
+        };
+
+        // =========================================================================
+        // 2. DOM REFERENCES (ALL RESOLVED BEFORE ANY FUNCTION EXECUTES)
+        // =========================================================================
+        const container = document.getElementById('viewport');
+        const zonesContainer = document.getElementById('zonesContainer');
+        const matSelect = document.getElementById('matSelect');
+        const meshMeta = document.getElementById('meshMeta');
+        const dropOverlay = document.getElementById('drop-overlay');
+        const csvModal = document.getElementById('csv-modal');
+        const csvPreview = document.getElementById('csvPreview');
+
+        MATERIALS.forEach((m, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `${m.name} (E=${m.E} GPa)`;
+            matSelect.appendChild(opt);
+        });
+
+        // =========================================================================
+        // 3. THREE.JS SCENE & LIGHTING
+        // =========================================================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f19);
+
+        const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(0, 4.5, 13.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
+        dirLight1.position.set(8, 14, 10);
+        scene.add(dirLight1);
+        const dirLight2 = new THREE.DirectionalLight(0x90cdf4, 0.4);
+        dirLight2.position.set(-10, -6, -8);
+        scene.add(dirLight2);
+
+        const grid = new THREE.GridHelper(18, 18, 0x1e293b, 0x1e293b);
+        grid.position.y = -3.2;
+        scene.add(grid);
+
+        const jawGroup = new THREE.Group();
+        jawGroup.position.set(0, 2.7, -3.1);
+        scene.add(jawGroup);
+
+        const mandibleMeshGroup = new THREE.Group();
+        mandibleMeshGroup.position.set(0, -2.7, 3.1);
+        jawGroup.add(mandibleMeshGroup);
+
+        const mandibleMat = new THREE.MeshStandardMaterial({
+            vertexColors: true, roughness: 0.35, metalness: 0.15, side: THREE.DoubleSide
+        });
+
+        let mandibleGeo = null;
+        let basePositions = null;
+        let mandibleMesh = null;
+
+        const zoneMarkers = [];
+        const zoneArrows = [];
+        ZONES.forEach((z) => {
+            const sphereGeo = new THREE.SphereGeometry(0.24, 16, 16);
+            const sphereMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+            const marker = new THREE.Mesh(sphereGeo, sphereMat);
+            marker.position.set(...z.pos);
+            mandibleMeshGroup.add(marker);
+            zoneMarkers.push(marker);
+
+            const dir = new THREE.Vector3(...z.dir).normalize();
+            const orig = new THREE.Vector3(...z.pos);
+            const arrow = new THREE.ArrowHelper(dir, orig, 1.4, 0x38bdf8, 0.35, 0.22);
+            mandibleMeshGroup.add(arrow);
+            zoneArrows.push(arrow);
+        });
+
+        const crackGroup = new THREE.Group();
+        mandibleMeshGroup.add(crackGroup);
+
+        // =========================================================================
+        // 4. UI RENDERING & MESH PROCESSING FUNCTIONS
+        // =========================================================================
+        function highlightSelectedCard() {
+            document.querySelectorAll('.zone-card').forEach((c, i) => {
+                c.classList.toggle('active', i === state.selectedZone);
+            });
+        }
+
+        function renderZoneControls() {
+            zonesContainer.innerHTML = '';
+            ZONES.forEach((z, idx) => {
+                const card = document.createElement('div');
+                card.className = 'zone-card' + (state.selectedZone === idx ? ' active' : '');
+                const isPressure = state.loadMode === 'pressure';
+                const val = isPressure ? z.pressure : z.force;
+                const max = isPressure ? 3.5 : 800;
+                const step = isPressure ? 0.05 : 5;
+                const unit = isPressure ? 'MPa' : 'N';
+                const computedForce = isPressure ? (z.pressure * z.area).toFixed(0) : z.force.toFixed(0);
+
+                card.innerHTML = `
+          <div class="zone-header">
+            <span>${z.name}</span>
+            <span id="zval-${idx}">${val} ${unit}</span>
+          </div>
+          <div class="zone-meta">
+            <span>Auto Area: ${z.area} mm²</span>
+            <span id="zforce-${idx}">Eff. Force: ${computedForce} N</span>
+          </div>
+          <input type="range" min="0" max="${max}" step="${step}" value="${val}" data-idx="${idx}" />
+        `;
+                card.querySelector('input').addEventListener('input', (e) => {
+                    const v = parseFloat(e.target.value);
+                    if (state.loadMode === 'pressure') z.pressure = v;
+                    else z.force = v;
+                    state.selectedZone = idx;
+                    document.getElementById(`zval-${idx}`).textContent = `${v} ${unit}`;
+                    const ef = state.loadMode === 'pressure' ? (z.pressure * z.area).toFixed(0) : z.force.toFixed(0);
+                    document.getElementById(`zforce-${idx}`).textContent = `Eff. Force: ${ef} N`;
+                    highlightSelectedCard();
+                });
+                card.addEventListener('click', () => { state.selectedZone = idx; highlightSelectedCard(); });
+                zonesContainer.appendChild(card);
+            });
+        }
+
+        function createParametricMandibleGeometry(isResectedSample = false) {
+            const curvePts = [
+                new THREE.Vector3(-4.4, 2.7, -3.1),
+                new THREE.Vector3(-4.2, 0.8, -2.2),
+                new THREE.Vector3(-4.0, -0.9, -1.4),
+                new THREE.Vector3(-2.8, -1.1, 1.4),
+                new THREE.Vector3(0.0, -1.15, 3.6),
+                new THREE.Vector3(2.8, -1.1, 1.4),
+                new THREE.Vector3(4.0, -0.9, -1.4),
+                new THREE.Vector3(4.2, 0.8, -2.2),
+                new THREE.Vector3(4.4, 2.7, -3.1)
+            ];
+            const archCurve = new THREE.CatmullRomCurve3(curvePts);
+            const bodyGeo = new THREE.TubeGeometry(archCurve, 120, 0.62, 24, false);
+
+            const pos = bodyGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+                y *= 1.35;
+                if (z > 2.4) {
+                    const chinFactor = (z - 2.4) / 1.5;
+                    if (y < -0.8) z += 0.32 * chinFactor;
+                }
+                if (z < -0.3 && z > -1.8 && y > -0.2) {
+                    const cor = Math.exp(-Math.pow((z + 1.05) / 0.55, 2));
+                    y += 1.65 * cor * Math.max(0, (y + 0.3));
+                }
+                // If generating the sample CT resection mesh, thin the left body to simulate a reconstructed graft segment
+                if (isResectedSample && x < -1.2 && z > -0.8 && z < 2.2) {
+                    y *= 0.68;
+                }
+                pos.setXYZ(i, x, y, z);
+            }
+            bodyGeo.computeVertexNormals();
+            return bodyGeo;
+        }
+
+        function syncZoneVisuals() {
+            ZONES.forEach((z, idx) => {
+                zoneMarkers[idx].position.set(...z.pos);
+                zoneArrows[idx].position.set(...z.pos);
+            });
+        }
+
+        function recomputeZoneSurfaceAreas() {
+            const pos = mandibleGeo.attributes.position;
+            const index = mandibleGeo.index;
+            const captureRadiusSq = 1.45 * 1.45;
+            const mmScaleSq = state.mmPerSceneUnit * state.mmPerSceneUnit;
+            const areaAccum = new Array(8).fill(0);
+
+            const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+            const cb = new THREE.Vector3(), ab = new THREE.Vector3(), centroid = new THREE.Vector3();
+
+            const triCount = index ? (index.count / 3) : Math.floor(pos.count / 3);
+            for (let t = 0; t < triCount; t++) {
+                const i0 = index ? index.getX(t * 3) : t * 3;
+                const i1 = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+                const i2 = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+
+                vA.fromBufferAttribute(pos, i0);
+                vB.fromBufferAttribute(pos, i1);
+                vC.fromBufferAttribute(pos, i2);
+
+                centroid.copy(vA).add(vB).add(vC).multiplyScalar(1 / 3);
+                cb.subVectors(vC, vB);
+                ab.subVectors(vA, vB);
+                const triAreaMm2 = 0.5 * cb.cross(ab).length() * mmScaleSq;
+
+                for (let z = 0; z < 8; z++) {
+                    const zp = ZONES[z].pos;
+                    const d2 = Math.pow(centroid.x - zp[0], 2) + Math.pow(centroid.y - zp[1], 2) + Math.pow(centroid.z - zp[2], 2);
+                    if (d2 <= captureRadiusSq) areaAccum[z] += triAreaMm2;
+                }
+            }
+
+            ZONES.forEach((z, idx) => {
+                z.area = areaAccum[idx] > 25 ? Math.round(areaAccum[idx]) : DEFAULT_AREAS[idx];
+            });
+        }
+
+        function snapZonesAndComputeAreas() {
+            const pos = mandibleGeo.attributes.position;
+            ZONES.forEach((z, idx) => {
+                const ref = new THREE.Vector3(...DEFAULT_ZONE_POS[idx]);
+                let bestDist = Infinity;
+                const nearest = new THREE.Vector3();
+                for (let i = 0; i < pos.count; i++) {
+                    const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+                    const d = ref.distanceToSquared(new THREE.Vector3(vx, vy, vz));
+                    if (d < bestDist) {
+                        bestDist = d;
+                        nearest.set(vx, vy, vz);
+                    }
+                }
+                z.pos = [nearest.x, nearest.y, nearest.z];
+            });
+            recomputeZoneSurfaceAreas();
+            syncZoneVisuals();
+        }
+
+        function installMandibleGeometry(bufferGeo, labelName, isExternalCT = false) {
+            if (mandibleMesh) {
+                mandibleMeshGroup.remove(mandibleMesh);
+                mandibleGeo.dispose();
+            }
+
+            bufferGeo.computeBoundingBox();
+            const box = bufferGeo.boundingBox;
+            const size = new THREE.Vector3();
+            const center = new THREE.Vector3();
+            box.getSize(size);
+            box.getCenter(center);
+
+            if (isExternalCT) {
+                bufferGeo.translate(-center.x, -center.y, -center.z);
+                const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                const targetSceneSpan = 8.8;
+                const scaleFactor = targetSceneSpan / maxDim;
+                bufferGeo.scale(scaleFactor, scaleFactor, scaleFactor);
+                state.mmPerSceneUnit = maxDim > 25 ? (maxDim / targetSceneSpan) : 12.5;
+            } else {
+                state.mmPerSceneUnit = 12.5;
+                ZONES.forEach((z, idx) => {
+                    z.pos = [...DEFAULT_ZONE_POS[idx]];
+                    z.area = DEFAULT_AREAS[idx];
+                });
+            }
+
+            bufferGeo.computeVertexNormals();
+            const vCount = bufferGeo.attributes.position.count;
+            const colors = new Float32Array(vCount * 3);
+            bufferGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            mandibleGeo = bufferGeo;
+            basePositions = mandibleGeo.attributes.position.array.slice();
+            mandibleMesh = new THREE.Mesh(mandibleGeo, mandibleMat);
+            mandibleMeshGroup.add(mandibleMesh);
+
+            state.meshName = labelName;
+            state.vertexCount = vCount;
+            state.cracks = [];
+            while (crackGroup.children.length) crackGroup.remove(crackGroup.children[0]);
+
+            if (isExternalCT) {
+                snapZonesAndComputeAreas();
+            } else {
+                syncZoneVisuals();
+            }
+
+            meshMeta.textContent = `Mesh: ${labelName} (${vCount.toLocaleString()} verts | 1 unit = ${state.mmPerSceneUnit.toFixed(1)} mm)`;
+            renderZoneControls();
+        }
+
+        // Generate an in-memory Binary STL buffer from a non-indexed BufferGeometry to test the full STL pipeline
+        function createBinarySTLBufferFromGeometry(geo) {
+            const nonIndexed = geo.index ? geo.toNonIndexed() : geo;
+            const pos = nonIndexed.attributes.position;
+            const triCount = Math.floor(pos.count / 3);
+            const buffer = new ArrayBuffer(84 + triCount * 50);
+            const view = new DataView(buffer);
+            view.setUint32(80, triCount, true);
+
+            let offset = 84;
+            for (let i = 0; i < triCount; i++) {
+                // Normal (12 bytes)
+                view.setFloat32(offset, 0, true);
+                view.setFloat32(offset + 4, 0, true);
+                view.setFloat32(offset + 8, 1, true);
+                offset += 12;
+                // 3 Vertices in millimeter scale (x 12.5 mm)
+                for (let v = 0; v < 3; v++) {
+                    const idx = i * 3 + v;
+                    view.setFloat32(offset, pos.getX(idx) * 12.5, true);
+                    view.setFloat32(offset + 4, pos.getY(idx) * 12.5, true);
+                    view.setFloat32(offset + 8, pos.getZ(idx) * 12.5, true);
+                    offset += 12;
+                }
+                view.setUint16(offset, 0, true);
+                offset += 2;
+            }
+            return buffer;
+        }
+
+        // Boot default parametric mandible
+        installMandibleGeometry(createParametricMandibleGeometry(false), 'Parametric_Baseline_Mandible', false);
+
+        // =========================================================================
+        // 5. EVENT LISTENERS: STL/OBJ UPLOAD, SAMPLE STL, ROTATION, & CSV EXPORT
+        // =========================================================================
+        function handleMeshFile(file) {
+            if (!file) return;
+            const ext = file.name.split('.').pop().toLowerCase();
+            const reader = new FileReader();
+
+            if (ext === 'stl') {
+                reader.onload = (ev) => {
+                    const loader = new THREE.STLLoader();
+                    const geo = loader.parse(ev.target.result);
+                    installMandibleGeometry(geo, file.name, true);
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (ext === 'obj') {
+                reader.onload = (ev) => {
+                    const loader = new THREE.OBJLoader();
+                    const objGroup = loader.parse(ev.target.result);
+                    let foundGeo = null;
+                    objGroup.traverse((child) => {
+                        if (child.isMesh && !foundGeo) foundGeo = child.geometry.clone();
+                    });
+                    if (foundGeo) installMandibleGeometry(foundGeo, file.name, true);
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        document.getElementById('meshInput').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleMeshFile(e.target.files[0]);
+        });
+
+        document.getElementById('btnSampleSTL').addEventListener('click', () => {
+            const sampleGeo = createParametricMandibleGeometry(true);
+            const stlArrayBuffer = createBinarySTLBufferFromGeometry(sampleGeo);
+            const loader = new THREE.STLLoader();
+            const parsedSTLGeo = loader.parse(stlArrayBuffer);
+            state.condition = 'tumor';
+            document.getElementById('condSelect').value = 'tumor';
+            installMandibleGeometry(parsedSTLGeo, 'Patient_CT_Left_Resection.stl', true);
+        });
+
+        document.getElementById('btnFlipAxes').addEventListener('click', () => {
+            if (!mandibleGeo) return;
+            mandibleGeo.rotateX(Math.PI / 2);
+            basePositions = mandibleGeo.attributes.position.array.slice();
+            snapZonesAndComputeAreas();
+            renderZoneControls();
+        });
+
+        document.getElementById('btnResetMesh').addEventListener('click', () => {
+            state.condition = 'healthy';
+            document.getElementById('condSelect').value = 'healthy';
+            installMandibleGeometry(createParametricMandibleGeometry(false), 'Parametric_Baseline_Mandible', false);
+        });
+
+        window.addEventListener('dragover', (e) => { e.preventDefault(); dropOverlay.style.display = 'flex'; });
+        window.addEventListener('dragleave', (e) => { if (e.target === dropOverlay) dropOverlay.style.display = 'none'; });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropOverlay.style.display = 'none';
+            if (e.dataTransfer.files.length > 0) handleMeshFile(e.dataTransfer.files[0]);
+        });
+
+        matSelect.addEventListener('change', (e) => { state.material = MATERIALS[e.target.value]; });
+        document.getElementById('ageSelect').addEventListener('change', (e) => { state.ageFactor = parseFloat(e.target.value); });
+        document.getElementById('sexSelect').addEventListener('change', (e) => { state.sexFactor = parseFloat(e.target.value); });
+        document.getElementById('condSelect').addEventListener('change', (e) => { state.condition = e.target.value; });
+        document.getElementById('loadMode').addEventListener('change', (e) => {
+            state.loadMode = e.target.value;
+            renderZoneControls();
+        });
+        document.getElementById('btnChew').addEventListener('click', (e) => {
+            state.chewing = !state.chewing;
+            e.target.textContent = state.chewing ? 'Pause Chewing Sim' : 'Resume Chewing Sim';
+        });
+        document.getElementById('btnClearCrack').addEventListener('click', () => {
+            state.cracks = [];
+            while (crackGroup.children.length) crackGroup.remove(crackGroup.children[0]);
+        });
+
+        function addCrackVisual(pt) {
+            const points = [];
+            for (let i = -3; i <= 3; i++) {
+                points.push(new THREE.Vector3(
+                    pt.x + (Math.random() - 0.5) * 0.25,
+                    pt.y + i * 0.22,
+                    pt.z + (Math.random() - 0.5) * 0.25
+                ));
+            }
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({ color: 0xff1111, linewidth: 3 });
+            crackGroup.add(new THREE.Line(geo, mat));
+
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(0.18, 0.28, 16),
+                new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide })
+            );
+            ring.position.copy(pt);
+            ring.lookAt(camera.position);
+            crackGroup.add(ring);
+        }
+
+        function stressToColor(norm) {
+            const t = Math.max(0, Math.min(1, norm));
+            if (t < 0.25) return [0, t * 4, 1];
+            if (t < 0.5) return [0, 1, 1 - (t - 0.25) * 4];
+            if (t < 0.75) return [(t - 0.5) * 4, 1, 0];
+            return [1, 1 - (t - 0.75) * 4, 0];
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            if (!mandibleMesh) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const hits = raycaster.intersectObject(mandibleMesh);
+            if (hits.length > 0) {
+                const localPt = mandibleMeshGroup.worldToLocal(hits[0].point.clone());
+                if (e.shiftKey) {
+                    ZONES[state.selectedZone].pos = [localPt.x, localPt.y, localPt.z];
+                    recomputeZoneSurfaceAreas();
+                    syncZoneVisuals();
+                    renderZoneControls();
+                } else if (state.condition === 'accident') {
+                    state.cracks.push(localPt);
+                    addCrackVisual(localPt);
+                } else {
+                    let bestIdx = 0, bestDist = Infinity;
+                    ZONES.forEach((z, idx) => {
+                        const d = localPt.distanceTo(new THREE.Vector3(...z.pos));
+                        if (d < bestDist) { bestDist = d; bestIdx = idx; }
+                    });
+                    state.selectedZone = bestIdx;
+                    highlightSelectedCard();
+                }
+            }
+        });
+
+        // CSV Builder + Modal + Download
+        document.getElementById('btnExportCSV').addEventListener('click', () => {
+            const mat = state.material;
+            const t = state.telemetry;
+            const timestamp = new Date().toISOString();
+
+            const rows = [
+                ['MANDIBLE DIGITAL TWIN - 3D BIOMECHANICAL & VON MISES FEA REPORT'],
+                ['Generated_Timestamp', timestamp],
+                ['Mesh_Source', state.meshName],
+                ['Mesh_Vertex_Count', state.vertexCount],
+                ['Material_Name', `"${mat.name}"`],
+                ['Youngs_Modulus_E_GPa', mat.E],
+                ['Poissons_Ratio_nu', mat.nu],
+                ['Yield_Strength_Sy_MPa', mat.Sy],
+                ['Density_g_cm3', mat.rho],
+                ['Age_Geometry_Factor', state.ageFactor],
+                ['Sex_Geometry_Factor', state.sexFactor],
+                ['Clinical_Condition', state.condition],
+                ['Loading_Input_Mode', state.loadMode],
+                ['Active_Fracture_Cracks', state.cracks.length],
+                [],
+                ['GLOBAL TELEMETRY SUMMARY'],
+                ['Peak_Von_Mises_Stress_MPa', t.peakSigma.toFixed(2)],
+                ['Global_Factor_of_Safety_FoS', t.fos.toFixed(3)],
+                ['Peak_Equivalent_Microstrain_ue', t.microstrain],
+                ['Max_Elastic_Deflection_mm', t.maxDisp],
+                ['Total_Resultant_Masticatory_Load_N', t.totalForce.toFixed(1)],
+                ['Clinical_Mechanostat_Verdict', t.verdict],
+                [],
+                ['8-ZONE GRANULAR BIOMECHANICAL TELEMETRY'],
+                [
+                    'Zone_ID', 'Anatomical_Zone_Name', 'Input_Mode', 'Applied_Input_Value',
+                    'Auto_Footprint_Area_mm2', 'Effective_Force_N', 'Pos_X', 'Pos_Y', 'Pos_Z',
+                    'Peak_VonMises_MPa', 'Mean_VonMises_MPa', 'Zone_Peak_Microstrain_ue', 'Zone_Local_FoS', 'Zone_Status'
+                ]
+            ];
+
+            ZONES.forEach((z, idx) => {
+                const effF = state.loadMode === 'pressure' ? (z.pressure * z.area) : z.force;
+                const inputVal = state.loadMode === 'pressure' ? `${z.pressure} MPa` : `${z.force} N`;
+                const zStrain = Math.round((z.peakStress / (mat.E * 1000)) * 1e6);
+                const zFoS = z.peakStress > 0.01 ? (mat.Sy / z.peakStress) : 99.9;
+                const zStatus = zFoS < 1.0 ? 'YIELD_EXCEEDED' : (zStrain > 4000 ? 'OVERLOAD_STRAIN' : 'SAFE');
+
+                rows.push([
+                    `Zone_${idx + 1}`,
+                    `"${z.name}"`,
+                    state.loadMode.toUpperCase(),
+                    inputVal,
+                    z.area,
+                    effF.toFixed(1),
+                    z.pos[0].toFixed(2), z.pos[1].toFixed(2), z.pos[2].toFixed(2),
+                    z.peakStress.toFixed(2),
+                    z.meanStress.toFixed(2),
+                    zStrain,
+                    zFoS.toFixed(2),
+                    zStatus
+                ]);
+            });
+
+            const csvContent = rows.map(r => r.join(',')).join('\n');
+            csvPreview.value = csvContent;
+            csvModal.style.display = 'flex';
+
+            try {
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Mandible_FEA_${mat.id}_${state.condition}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.log('Sandbox blocked automatic download; showing modal preview instead.');
+            }
+        });
+
+        document.getElementById('btnCloseModal').addEventListener('click', () => { csvModal.style.display = 'none'; });
+        document.getElementById('btnCopyCSV').addEventListener('click', (e) => {
+            csvPreview.select();
+            navigator.clipboard.writeText(csvPreview.value);
+            e.target.textContent = 'Copied to Clipboard!';
+            setTimeout(() => { e.target.textContent = 'Copy CSV to Clipboard'; }, 1500);
+        });
+
+        // =========================================================================
+        // 6. REAL-TIME BIOMECHANICAL SOLVER & ANIMATION LOOP
+        // =========================================================================
+        const clock = new THREE.Clock();
+
+        function updateSimulation() {
+            if (!mandibleGeo) return;
+            const t = clock.getElapsedTime();
+            const chewPhase = state.chewing ? (0.18 + 0.82 * Math.pow(Math.sin(t * Math.PI * 1.2), 2)) : 1.0;
+            jawGroup.rotation.x = state.chewing ? (0.14 * (1.0 - chewPhase)) : 0.0;
+
+            const mat = state.material;
+            const geomFactor = state.ageFactor * state.sexFactor;
+            const modeMultiplier = state.loadMode === 'force' ? 1.42 : 1.0;
+
+            let totalForce = 0;
+            const effForces = ZONES.map((z, idx) => {
+                const rawF = state.loadMode === 'pressure' ? (z.pressure * z.area) : z.force;
+                const f = rawF * chewPhase;
+                totalForce += f;
+                zoneArrows[idx].setLength(Math.max(0.3, (f / 250) * 1.6), 0.32, 0.2);
+                zoneMarkers[idx].scale.setScalar(state.loadMode === 'pressure' ? 1.55 : 0.85);
+                return f;
+            });
+
+            const posAttr = mandibleGeo.attributes.position;
+            const colAttr = mandibleGeo.attributes.color;
+            let peakSigma = 0;
+            const zonePeak = new Array(8).fill(0);
+            const zoneSum = new Array(8).fill(0);
+            const zoneCount = new Array(8).fill(0);
+
+            for (let i = 0; i < posAttr.count; i++) {
+                const vx = basePositions[i * 3];
+                const vy = basePositions[i * 3 + 1];
+                const vz = basePositions[i * 3 + 2];
+
+                let sigmaLocal = 0;
+                let nearestZone = 0, minDist = 999;
+
+                for (let z = 0; z < 8; z++) {
+                    const dx = vx - ZONES[z].pos[0];
+                    const dy = vy - ZONES[z].pos[1];
+                    const dz = vz - ZONES[z].pos[2];
+                    const d2 = dx * dx + dy * dy + dz * dz;
+                    const d = Math.sqrt(d2);
+                    if (d < minDist) { minDist = d; nearestZone = z; }
+
+                    const spread = state.loadMode === 'pressure' ? 2.6 : 1.45;
+                    const kernel = Math.exp(-d2 / spread);
+                    const leverArm = 1.0 + 0.18 * Math.abs(vz + 1.5);
+                    sigmaLocal += (effForces[z] * 0.095 * leverArm * kernel) / geomFactor;
+                }
+
+                if (vz > 2.2) {
+                    const wishbone = ((effForces[0] + effForces[1] + effForces[2] + effForces[3]) * 0.022) * Math.exp(-vx * vx / 1.2);
+                    sigmaLocal += wishbone / geomFactor;
+                }
+
+                if (state.condition === 'tumor' && vx < -1.2 && vz > -0.8 && vz < 2.2) {
+                    sigmaLocal *= 2.35;
+                } else if (state.condition === 'osteo') {
+                    sigmaLocal *= 1.55;
+                }
+
+                for (let c = 0; c < state.cracks.length; c++) {
+                    const cp = state.cracks[c];
+                    const cd2 = Math.pow(vx - cp.x, 2) + Math.pow(vy - cp.y, 2) + Math.pow(vz - cp.z, 2);
+                    if (cd2 < 2.2) sigmaLocal *= (1.0 + 2.4 * Math.exp(-cd2 / 0.45));
+                }
+
+                sigmaLocal *= modeMultiplier;
+                if (sigmaLocal > peakSigma) peakSigma = sigmaLocal;
+                if (sigmaLocal > zonePeak[nearestZone]) zonePeak[nearestZone] = sigmaLocal;
+                zoneSum[nearestZone] += sigmaLocal;
+                zoneCount[nearestZone] += 1;
+
+                const dispScale = (sigmaLocal / (mat.E * 1000)) * 8.0;
+                posAttr.setXYZ(i, vx, vy - dispScale * Math.max(0, (vz + 2.0) * 0.25), vz);
+
+                const refScale = Math.min(mat.Sy, 140);
+                const [r, g, b] = stressToColor(sigmaLocal / refScale);
+                colAttr.setXYZ(i, r, g, b);
+            }
+
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+
+            ZONES.forEach((z, idx) => {
+                z.peakStress = zonePeak[idx];
+                z.meanStress = zoneCount[idx] > 0 ? (zoneSum[idx] / zoneCount[idx]) : 0;
+            });
+
+            const fos = peakSigma > 0.01 ? (mat.Sy / peakSigma) : 99.9;
+            const microstrain = Math.round((peakSigma / (mat.E * 1000)) * 1e6);
+            const maxDisp = ((totalForce * 18.5) / (mat.E * 1000 * geomFactor)).toFixed(3);
+
+            let verdict = 'OPTIMAL_BIOMECHANICAL_STATE';
+            if (fos < 1.0) verdict = 'STRUCTURAL_FAILURE_YIELD_EXCEEDED';
+            else if (microstrain > 4000) verdict = 'PATHOLOGICAL_OVERLOAD_STRAIN';
+            else if (microstrain < 200) verdict = 'STRESS_SHIELDING_RISK';
+
+            state.telemetry = { peakSigma, fos, microstrain, maxDisp, totalForce, verdict };
+
+            document.getElementById('kpiSigma').textContent = `${peakSigma.toFixed(1)} MPa`;
+            document.getElementById('kpiFoS').textContent = fos > 25 ? '>25' : fos.toFixed(2);
+            document.getElementById('kpiFoS').style.color = fos < 1.0 ? '#ef4444' : (fos < 1.5 ? '#f59e0b' : '#10b981');
+            document.getElementById('kpiStrain').textContent = `${microstrain.toLocaleString()} με`;
+            document.getElementById('kpiDisp').textContent = `${maxDisp} mm`;
+            document.getElementById('kpiForce').textContent = `${Math.round(totalForce)} N`;
+            document.getElementById('kpiCracks').textContent = state.cracks.length;
+            document.getElementById('legendMax').textContent = `${Math.min(mat.Sy, 140)} MPa`;
+
+            const statusEl = document.getElementById('kpiStatus');
+            if (fos < 1.0) {
+                statusEl.innerHTML = `<span class="status-badge" style="background:#ef4444;color:#fff;">STRUCTURAL FAILURE / YIELD EXCEEDED</span><div style="margin-top:4px;font-weight:400;color:#fca5a5;">Peak stress (${peakSigma.toFixed(1)} MPa) exceeds ${mat.name} yield limit (${mat.Sy} MPa).</div>`;
+            } else if (microstrain > 4000) {
+                statusEl.innerHTML = `<span class="status-badge" style="background:#f59e0b;color:#000;">PATHOLOGICAL OVERLOAD (&gt;4,000 με)</span><div style="margin-top:4px;font-weight:400;color:#fde68a;">High strain; risk of scaffold buckling without titanium fixation plate.</div>`;
+            } else if (microstrain < 200) {
+                statusEl.innerHTML = `<span class="status-badge" style="background:#38bdf8;color:#000;">STRESS SHIELDING RISK (&lt;200 με)</span><div style="margin-top:4px;font-weight:400;color:#bae6fd;">Stiff implant (${mat.E} GPa) shields host bone from remodeling stimulus.</div>`;
+            } else {
+                statusEl.innerHTML = `<span class="status-badge" style="background:#10b981;color:#000;">OPTIMAL BIOMECHANICAL STATE</span><div style="margin-top:4px;font-weight:400;color:#a7f3d0;">Safe Factor of Safety (${fos.toFixed(2)}) & physiological Frost's Mechanostat window (200–2,500 με).</div>`;
+            }
+
+            document.getElementById('matDetails').innerHTML = `
+        <strong>${mat.name}</strong><br/>
+        • E: <b>${mat.E} GPa</b> | ν: <b>${mat.nu}</b> | σ_y: <b>${mat.Sy} MPa</b> | ρ: <b>${mat.rho} g/cm³</b><br/>
+        <span style="color:#9ca3af;">${mat.note}</span>
+      `;
+
+            document.getElementById('zoneTelemetry').innerHTML = ZONES.map((z) =>
+                `<div style="display:flex;justify-content:space-between;border-bottom:1px solid #1f2937;padding:2px 0;">
+          <span>${z.name}</span>
+          <span>
+            <b style="color:${z.peakStress > mat.Sy ? '#ef4444' : '#38bdf8'}">${z.peakStress.toFixed(1)}</b>
+            <span style="color:#9ca3af;"> / ${z.meanStress.toFixed(1)} MPa</span>
+          </span>
+        </div>`
+            ).join('');
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateSimulation();
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    </script>
+</body>
+
+</html>
